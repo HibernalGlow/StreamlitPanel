@@ -24,19 +24,8 @@ def parse_log_line(line: str) -> Optional[Dict]:
 
 def parse_progress(content: str) -> Optional[Dict]:
     """解析进度条信息"""
-    # 匹配进度百分比: 进度 50%
-    progress_match = re.match(r'(.*?)(\d+(?:\.\d+)?)%$', content)
-    
-    if progress_match:
-        prefix, percentage = progress_match.groups()
-        return {
-            "prefix": prefix.strip(),
-            "percentage": float(percentage),
-            "is_complete": float(percentage) >= 100.0
-        }
-    
-    # 匹配分数形式进度: (1/10) 10%
-    fraction_match = re.match(r'(.*?)(?:\((\d+)/(\d+)\)).*?(\d+(?:\.\d+)?)%$', content)
+    # 匹配分数形式进度: 任务 (5/10) 50%
+    fraction_match = re.match(r'(.*?)\s+\((\d+)/(\d+)\)\s+(\d+(?:\.\d+)?)%$', content)
     
     if fraction_match:
         prefix, current, total, percentage = fraction_match.groups()
@@ -49,8 +38,8 @@ def parse_progress(content: str) -> Optional[Dict]:
             "fraction": f"({current}/{total})"
         }
         
-    # 匹配方括号形式进度: [1/10] 10%
-    bracket_match = re.match(r'(.*?)(?:\[(\d+)/(\d+)\]).*?(\d+(?:\.\d+)?)%$', content)
+    # 匹配方括号形式进度: 任务 [5/10] 50%
+    bracket_match = re.match(r'(.*?)\s+\[(\d+)/(\d+)\]\s+(\d+(?:\.\d+)?)%$', content)
     
     if bracket_match:
         prefix, current, total, percentage = bracket_match.groups()
@@ -61,6 +50,17 @@ def parse_progress(content: str) -> Optional[Dict]:
             "percentage": float(percentage),
             "is_complete": float(percentage) >= 100.0,
             "fraction": f"[{current}/{total}]"
+        }
+    
+    # 匹配进度百分比: 进度 50%
+    progress_match = re.match(r'(.*?)(\d+(?:\.\d+)?)%$', content)
+    
+    if progress_match:
+        prefix, percentage = progress_match.groups()
+        return {
+            "prefix": prefix.strip(),
+            "percentage": float(percentage),
+            "is_complete": float(percentage) >= 100.0
         }
     
     return None 

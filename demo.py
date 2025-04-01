@@ -1,32 +1,27 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-多脚本日志监控器演示程序
-同时启动多个模拟脚本进程，每个脚本生成不同类型的日志
+单脚本日志监控器演示程序
+生成模拟日志并用register_script注册到主应用
 """
 
 import os
 import time
 import random
 import logging
-import threading
 import argparse
 from datetime import datetime
-import sys
 import tempfile
+from nodes.record.logger_config import setup_logger
 
-# 添加父目录到路径，以便导入streamlit_logger
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(os.path.dirname(current_dir)))
+# 导入register_script函数
+from main import register_script, STREAMLIT_LAYOUT
 
-from nodes.gui.streamlit.streamlit_logger import StreamlitLoggerManager
-
-# 设置日志格式
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S,%f'
-)
+config = {
+    'script_name': 'demo',
+    'console_enabled': True
+}
+logger, config_info = setup_logger(config)
 
 class DemoScript:
     """模拟脚本类，生成各种类型的日志"""
@@ -40,25 +35,25 @@ class DemoScript:
             duration: 脚本运行时长（秒）
         """
         self.script_name = script_name
-        self.log_dir = log_dir
         self.duration = duration
         
         # 创建脚本日志目录
-        self.script_dir = os.path.join(log_dir, script_name)
-        os.makedirs(self.script_dir, exist_ok=True)
-        
+         
         # 创建日志文件
-        self.log_file = os.path.join(self.script_dir, f"{script_name}.log")
-        
-        # 配置日志处理器
+        self.log_file = config_info['log_file']
         self.logger = self._setup_logger()
         
-        # 停止标志
-        self.stop_flag = threading.Event()
+        # 注册到主应用
+        self.script_info = {
+            'script_id': script_name,
+            'script_name': script_name,
+            'log_file': self.log_file,
+            'layout': STREAMLIT_LAYOUT
+        }
+        register_script(self.script_info)
     
     def _setup_logger(self):
         """设置日志记录器"""
-        logger = logging.getLogger(self.script_name)
         
         # 移除所有已有处理器
         for handler in logger.handlers[:]:
@@ -76,23 +71,25 @@ class DemoScript:
     
     def run(self):
         """运行模拟脚本"""
-        # 启动Streamlit日志监控器
-        StreamlitLoggerManager.init_logger(self.log_file)
-        
         # 记录启动信息
         self.logger.info(f"[#status]脚本 {self.script_name} 已启动")
         
-        # 模拟不同类型的进度
+        # 模拟文件处理进度
         self._run_file_processing()
+        # 模拟图片转换进度
         self._run_image_conversion()
+        # 模拟压缩包处理进度
         self._run_archive_operations()
         
-        # 记录性能信息
-        threading.Thread(target=self._log_performance, daemon=True).start()
+        # 启动性能信息记录
+        import threading
+        perf_thread = threading.Thread(target=self._log_performance)
+        perf_thread.daemon = True
+        perf_thread.start()
         
         # 主循环
         start_time = time.time()
-        while not self.stop_flag.is_set() and (time.time() - start_time) < self.duration:
+        while (time.time() - start_time) < self.duration:
             # 记录一些随机状态信息
             self._log_random_status()
             time.sleep(random.uniform(1, 3))
@@ -102,7 +99,8 @@ class DemoScript:
     
     def _log_performance(self):
         """记录性能信息"""
-        while not self.stop_flag.is_set():
+        start_time = time.time()
+        while (time.time() - start_time) < self.duration:
             cpu = random.uniform(10, 95)
             memory = random.uniform(100, 500)
             
@@ -113,7 +111,8 @@ class DemoScript:
     
     def _run_file_processing(self):
         """模拟文件处理进度"""
-        total_files = random.randint(10, 50)
+        import threading
+        total_files = random.randint(10, 30)
         
         thread = threading.Thread(
             target=self._simulate_progress,
@@ -124,7 +123,8 @@ class DemoScript:
     
     def _run_image_conversion(self):
         """模拟图片转换进度"""
-        total_images = random.randint(20, 100)
+        import threading
+        total_images = random.randint(20, 40)
         
         thread = threading.Thread(
             target=self._simulate_progress,
@@ -135,11 +135,12 @@ class DemoScript:
     
     def _run_archive_operations(self):
         """模拟压缩包处理进度"""
+        import threading
         total_archives = random.randint(5, 15)
         
         thread = threading.Thread(
             target=self._simulate_progress,
-            args=("archive_ops", "压缩文件处理", total_archives, 1.0, 3.0),
+            args=("archive_ops", "压缩文件处理", total_archives, 1.0, 2.0),
             daemon=True
         )
         thread.start()
@@ -154,8 +155,11 @@ class DemoScript:
             min_delay: 最小延迟（秒）
             max_delay: 最大延迟（秒）
         """
+        start_time = time.time()
+        duration_per_item = self.duration / (total * 1.2)  # 确保能在脚本结束前完成
+        
         for i in range(1, total + 1):
-            if self.stop_flag.is_set():
+            if (time.time() - start_time) >= self.duration:
                 break
                 
             percentage = (i / total) * 100
@@ -174,8 +178,9 @@ class DemoScript:
                 else:
                     self.logger.warning(f"[#{panel}]处理 {task_name}_{i} 有潜在问题")
             
-            # 随机延迟
-            time.sleep(random.uniform(min_delay, max_delay))
+            # 延迟，但确保不会超过总时长
+            sleep_time = min(random.uniform(min_delay, max_delay), duration_per_item)
+            time.sleep(sleep_time)
     
     def _log_random_status(self):
         """记录随机状态信息"""
@@ -189,15 +194,11 @@ class DemoScript:
         ]
         
         self.logger.info(random.choice(statuses))
-    
-    def stop(self):
-        """停止脚本运行"""
-        self.stop_flag.set()
+
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(description="多脚本日志监控器演示程序")
-    parser.add_argument('--count', type=int, default=3, help="启动的脚本数量")
+    parser = argparse.ArgumentParser(description="单脚本日志监控器演示程序")
     parser.add_argument('--duration', type=int, default=60, help="脚本运行时长（秒）")
     parser.add_argument('--log-dir', type=str, default=None, help="日志目录")
     
@@ -212,26 +213,20 @@ def main():
     
     print(f"日志目录: {log_dir}")
     
-    # 创建并启动模拟脚本
-    scripts = []
-    for i in range(args.count):
-        script_name = f"demo_script_{i+1}"
-        script = DemoScript(script_name, log_dir, args.duration)
-        scripts.append(script)
-        
-        # 在线程中启动脚本
-        thread = threading.Thread(target=script.run)
-        thread.start()
+    # 创建并运行模拟脚本
+    script_name = "单脚本演示"
+    script = DemoScript(script_name, log_dir, args.duration)
+    print(f"脚本信息已注册，日志文件: {script.log_file}")
     
     try:
-        # 等待所有脚本运行完成
-        time.sleep(args.duration)
+        print("开始运行演示脚本，按Ctrl+C停止...")
+        script.run()
     except KeyboardInterrupt:
-        print("正在停止所有脚本...")
-        for script in scripts:
-            script.stop()
+        print("\n脚本已停止")
     
-    print(f"演示完成，日志文件保存在: {log_dir}")
+    print(f"\n演示完成！日志文件保存在: {script.log_file}")
+    print("请运行 `streamlit run main.py` 查看日志")
+
 
 if __name__ == "__main__":
     main() 

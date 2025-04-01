@@ -15,22 +15,55 @@ def read_log_file(log_file: str, last_position: int = 0) -> Tuple[List[Dict], in
         log_entries = []
         new_position = last_position
         
-        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-            # 定位到上次读取位置
-            f.seek(last_position)
-            
-            # 读取新内容
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+        # 尝试不同的编码方式
+        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'utf-16', 'ascii', 'latin1']
+        content = None
+        error_info = None
+        
+        for encoding in encodings:
+            try:
+                with open(log_file, 'r', encoding=encoding) as f:
+                    # 定位到上次读取位置
+                    f.seek(last_position)
+                    content = f.read()
+                break
+            except UnicodeDecodeError as e:
+                continue
+            except Exception as e:
+                error_info = str(e)
+                continue
+        
+        if content is None:
+            if error_info:
+                st.error(f"读取日志文件出错: {error_info}")
+            else:
+                # 尝试二进制方式读取来检查文件是否为空
+                try:
+                    with open(log_file, 'rb') as f:
+                        f.seek(last_position)
+                        raw_content = f.read()
                     
-                log_entry = parse_log_line(line)
-                if log_entry:
-                    log_entries.append(log_entry)
+                    if not raw_content:
+                        return [], last_position  # 文件为空或已经读取到末尾
+                    else:
+                        st.error(f"无法使用支持的编码方式读取日志文件: {log_file}")
+                except Exception as e:
+                    st.error(f"读取日志文件出错: {e}")
             
-            # 更新读取位置
-            new_position = f.tell()
+            return [], last_position
+            
+        # 处理读取的内容
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+                
+            log_entry = parse_log_line(line)
+            if log_entry:
+                log_entries.append(log_entry)
+        
+        # 更新读取位置
+        new_position = last_position + len(content.encode('utf-8'))
         
         return log_entries, new_position
     except Exception as e:

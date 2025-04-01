@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import json
 from typing import Dict, List, Optional
+import psutil
 
 from src.components.script_dashboard import ScriptDashboard
 from src.utils.file_utils import read_log_file, is_script_active
@@ -46,7 +47,7 @@ class StreamlitLoggerManager:
                 )
         
         # 保存配置到session_state
-        if "script_configs" not in st.session_state:
+        if not hasattr(st.session_state, "script_configs"):
             st.session_state.script_configs = {}
         
         # 使用默认布局或自定义布局
@@ -80,7 +81,6 @@ class StreamlitLoggerManager:
         
         # 更新系统状态
         try:
-            import psutil
             cpu_usage = psutil.cpu_percent()
             memory = psutil.virtual_memory()
             disk_io = psutil.disk_io_counters()
